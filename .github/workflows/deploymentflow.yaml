@@ -58,6 +58,10 @@ jobs:
                       aws lambda update-function-code --function-name "$FUNCTION_NAME" \
                           --zip-file fileb://"$FUNCTION_NAME.zip" --region "$AWS_REGION"
 
+                      # Wait for a few seconds to ensure the code update completes
+                      echo "Waiting for the Lambda update to complete..."
+                      sleep 30
+
                       # Update the Lambda function configuration (memory, timeout, and ephemeral storage)
                       aws lambda update-function-configuration --function-name "$FUNCTION_NAME" \
                           --memory-size 1024 \
