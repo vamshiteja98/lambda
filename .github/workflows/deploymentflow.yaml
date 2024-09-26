@@ -1,9 +1,9 @@
-name: Deploy Lambda Functions
+name: Deploy Lambdas
 
 on:
   push:
-    paths:
-      - '*/**'  # Trigger on changes to any top-level directories
+    branches:
+      - main  # Adjust based on your main branch
 
 jobs:
   deploy:
@@ -13,26 +13,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          node-version: '18'
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1  # Your AWS region
 
-      - name: Install AWS CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip
-          pip install awscli
-
-      - name: Configure AWS Credentials
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }} # Optional if using a secret
-        run: |
-          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set default.region $AWS_REGION # Optional if using a secret
+      - name: Install unzip
+        run: sudo apt-get install -y unzip
 
       - name: Deploy Lambdas
         run: |
@@ -59,11 +48,11 @@ jobs:
                   cd .. || { echo "Failed to change back to base directory"; exit 1; }
 
                   # Check if the Lambda function already exists
-                  if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+                  if aws lambda get-function --function-name "$FUNCTION_NAME" --region ap-south-1 >/dev/null 2>&1; then
                       echo "Updating existing Lambda function $FUNCTION_NAME..."
                       # Update the existing Lambda function with the new code
                       aws lambda update-function-code --function-name "$FUNCTION_NAME" \
-                          --zip-file fileb://"$FUNCTION_NAME.zip" --region "$AWS_REGION"
+                          --zip-file fileb://"$FUNCTION_NAME.zip" --region ap-south-1
                   else
                       echo "Creating new Lambda function $FUNCTION_NAME..."
                       # Create a new Lambda function
@@ -71,7 +60,7 @@ jobs:
                           --runtime nodejs18.x \
                           --handler index.handler \
                           --role "$ROLE_ARN" \
-                          --region "$AWS_REGION" \
+                          --region ap-south-1 \
                           --zip-file fileb://"$FUNCTION_NAME.zip"
                   fi
 
