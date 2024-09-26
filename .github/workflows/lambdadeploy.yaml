@@ -65,7 +65,7 @@ jobs:
 
               # Create the new Lambda function
               aws lambda create-function --function-name "$FUNCTION_NAME" \
-                --runtime nodejs14.x \
+                --runtime nodejs18.x \
                 --handler index.handler \
                 --role "$ROLE_ARN" \
                 --region "$AWS_REGION" \
