@@ -1,0 +1,72 @@
+name: Deploy Lambdas
+
+on:
+  push:
+    branches:
+      - main  # Adjust based on your main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Deploy Lambda Functions
+        run: |
+          BASE_PATH="./"  # Adjust based on your base path for Lambda folders
+          AWS_REGION="ap-south-1"
+          ROLE_ARN="arn:aws:iam::905418239558:role/Lambdarole"  # Replace with your actual IAM role ARN
+
+          # Loop through each folder in the base path
+          for dir in "$BASE_PATH"/*/; do
+            FUNCTION_NAME=$(basename "$dir")  # Get the folder name as the function name
+
+            # Check if the Lambda function already exists
+            if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "Updating existing Lambda function $FUNCTION_NAME..."
+
+              # Compare and update if there are changes in the index.js or environment variables
+              ENV_VARS=""
+              if [ -f "$dir/environmentvariables.txt" ]; then
+                while IFS= read -r line; do
+                  ENV_VARS+="--environment Variables={$line} "
+                done < "$dir/environmentvariables.txt"
+              fi
+
+              # Update the function code and environment variables
+              aws lambda update-function-code --function-name "$FUNCTION_NAME" \
+                --zip-file fileb://"$dir/index.js" --region "$AWS_REGION"
+
+              if [ -n "$ENV_VARS" ]; then
+                aws lambda update-function-configuration --function-name "$FUNCTION_NAME" \
+                  $ENV_VARS --region "$AWS_REGION"
+              fi
+
+            else
+              echo "Creating new Lambda function $FUNCTION_NAME..."
+              ENV_VARS=""
+              if [ -f "$dir/environmentvariables.txt" ]; then
+                while IFS= read -r line; do
+                  ENV_VARS+="--environment Variables={$line} "
+                done < "$dir/environmentvariables.txt"
+              fi
+
+              # Create the new Lambda function
+              aws lambda create-function --function-name "$FUNCTION_NAME" \
+                --runtime nodejs14.x \
+                --handler index.handler \
+                --role "$ROLE_ARN" \
+                --region "$AWS_REGION" \
+                --zip-file fileb://"$dir/index.js" $ENV_VARS
+            fi
+          done
+
