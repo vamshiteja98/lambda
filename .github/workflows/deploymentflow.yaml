@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main  # Adjust based on your main branch
+    paths:
+      - '*/**'  # Trigger on changes to any top-level directories
 
 jobs:
   deploy:
@@ -18,10 +20,13 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1  # Your AWS region
+          aws-region: ap-south-1  # Specify your AWS region
 
-      - name: Install unzip
-        run: sudo apt-get install -y unzip
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          pip install awscli
 
       - name: Deploy Lambdas
         run: |
@@ -29,7 +34,8 @@ jobs:
 
           # Define your base path for Lambda folders and AWS details
           BASE_PATH="./"          # Adjust based on your base path for Lambda folders
-          ROLE_ARN="arn:aws:iam::905418239558:role/Lambdarole" # Your actual role ARN
+          AWS_REGION="ap-south-1" # Your AWS region
+          ROLE_ARN="arn:aws:iam::905418239558:role/Lambdarole" # Your role ARN
 
           # Loop through each top-level directory
           for dir in "$BASE_PATH"*/; do
@@ -40,7 +46,6 @@ jobs:
                   echo "Creating zip file for $FUNCTION_NAME..."
                   cd "$dir" || { echo "Failed to change directory to $dir"; exit 1; }
 
-                  # Create zip file and check the contents
                   zip -r "../$FUNCTION_NAME.zip" .   # Zip all contents of the folder (including index.js)
                   echo "Contents of the zip file:"
                   unzip -l "../$FUNCTION_NAME.zip"    # List the contents of the created zip file
@@ -48,26 +53,29 @@ jobs:
                   cd .. || { echo "Failed to change back to base directory"; exit 1; }
 
                   # Check if the Lambda function already exists
-                  if aws lambda get-function --function-name "$FUNCTION_NAME" --region ap-south-1 >/dev/null 2>&1; then
+                  if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
                       echo "Updating existing Lambda function $FUNCTION_NAME..."
-                      # Update the existing Lambda function with the new code
+
+                      # Update the existing Lambda function code
                       aws lambda update-function-code --function-name "$FUNCTION_NAME" \
-                          --zip-file fileb://"$FUNCTION_NAME.zip" --region ap-south-1
+                          --zip-file fileb://"$FUNCTION_NAME.zip" --region "$AWS_REGION"
+
+                      # Update the Lambda function configuration (memory, timeout, and ephemeral storage)
+                      aws lambda update-function-configuration --function-name "$FUNCTION_NAME" \
+                          --memory-size 1024 \
+                          --timeout 840 \
+                          --ephemeral-storage '{"Size": 512}' \
+                          --region "$AWS_REGION"
                   else
                       echo "Creating new Lambda function $FUNCTION_NAME..."
-                      # Create a new Lambda function
+
+                      # Create a new Lambda function with specified configuration
                       aws lambda create-function --function-name "$FUNCTION_NAME" \
                           --runtime nodejs18.x \
                           --handler index.handler \
                           --role "$ROLE_ARN" \
-                          --region ap-south-1 \
-                          --zip-file fileb://"$FUNCTION_NAME.zip"
-                  fi
-
-                  # Clean up the zip file after upload
-                  rm "$FUNCTION_NAME.zip"
-              else
-                  echo "No index.js found in $dir, skipping..."
-              fi
-          done
+                          --memory-size 1024 \
+                          --timeout 840 \
+                          --ephemeral-storage '{"Size": 512}' \
+                          --region "$AWS
 
