@@ -70,6 +70,5 @@ jobs:
                 --role "$ROLE_ARN" \
                 --region "$AWS_REGION" \
                 --zip-file fileb://"$dir/$FUNCTION_NAME.zip" $ENV_VARS
-OAOAOA            fi
+            fi
           done
-
