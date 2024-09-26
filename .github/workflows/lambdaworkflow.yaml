@@ -1,0 +1,75 @@
+name: Deploy Lambda Functions
+
+on:
+  push:
+    paths:
+      - '*/**'  # Trigger on changes to any top-level directories
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '18'
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          pip install awscli
+
+      - name: Deploy Lambdas
+        run: |
+          #!/bin/bash
+
+          # Define your base path for Lambda folders and AWS details
+          BASE_PATH="./"          # Adjust based on your base path for Lambda folders
+          AWS_REGION="ap-south-1" # Your AWS region
+          ROLE_ARN="arn:aws:iam::905418239558:role/Lambdarole" # Your actual role ARN
+
+          # Loop through each top-level directory
+          for dir in "$BASE_PATH"*/; do
+              if [ -f "$dir/index.js" ]; then  # Check if index.js exists in the folder
+                  FUNCTION_NAME=$(basename "$dir")  # Get the name of the directory as function name
+
+                  # Create a zip file containing the index.js file
+                  echo "Creating zip file for $FUNCTION_NAME..."
+                  cd "$dir" || { echo "Failed to change directory to $dir"; exit 1; }
+
+                  # Create zip file and check the contents
+                  zip -r "../$FUNCTION_NAME.zip" .   # Zip all contents of the folder (including index.js)
+                  echo "Contents of the zip file:"
+                  unzip -l "../$FUNCTION_NAME.zip"    # List the contents of the created zip file
+
+                  cd .. || { echo "Failed to change back to base directory"; exit 1; }
+
+                  # Check if the Lambda function already exists
+                  if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+                      echo "Updating existing Lambda function $FUNCTION_NAME..."
+                      # Update the existing Lambda function with the new code
+                      aws lambda update-function-code --function-name "$FUNCTION_NAME" \
+                          --zip-file fileb://"$FUNCTION_NAME.zip" --region "$AWS_REGION"
+                  else
+                      echo "Creating new Lambda function $FUNCTION_NAME..."
+                      # Create a new Lambda function
+                      aws lambda create-function --function-name "$FUNCTION_NAME" \
+                          --runtime nodejs18.x \
+                          --handler index.handler \
+                          --role "$ROLE_ARN" \
+                          --region "$AWS_REGION" \
+                          --zip-file fileb://"$FUNCTION_NAME.zip"
+                  fi
+
+                  # Clean up the zip file after upload
+                  rm "$FUNCTION_NAME.zip"
+              else
+                  echo "No index.js found in $dir, skipping..."
+              fi
+          done
+
