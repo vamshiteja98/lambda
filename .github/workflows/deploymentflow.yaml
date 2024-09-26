@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main  # Adjust based on your main branch
-    paths:
-      - '*/**'  # Trigger on changes to any top-level directories
 
 jobs:
   deploy:
@@ -20,9 +18,9 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1  # Specify your AWS region
+          aws-region: ap-south-1
 
-      - name: Install dependencies
+      - name: Install AWS CLI (for zip packaging)
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip
@@ -35,7 +33,7 @@ jobs:
           # Define your base path for Lambda folders and AWS details
           BASE_PATH="./"          # Adjust based on your base path for Lambda folders
           AWS_REGION="ap-south-1" # Your AWS region
-          ROLE_ARN="arn:aws:iam::905418239558:role/Lambdarole" # Your role ARN
+          ROLE_ARN="arn:aws:iam::***:role/Lambdarole" # Your actual role ARN
 
           # Loop through each top-level directory
           for dir in "$BASE_PATH"*/; do
@@ -77,5 +75,14 @@ jobs:
                           --memory-size 1024 \
                           --timeout 840 \
                           --ephemeral-storage '{"Size": 512}' \
-                          --region "$AWS
+                          --zip-file fileb://"$FUNCTION_NAME.zip" \
+                          --region "$AWS_REGION"
+                  fi
+
+                  # Clean up the zip file after upload
+                  rm "$FUNCTION_NAME.zip"
+              else
+                  echo "No index.js found in $dir, skipping..."
+              fi
+          done
 
