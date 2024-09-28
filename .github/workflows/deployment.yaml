@@ -3,7 +3,7 @@ name: Deploy Lambdas
 on:
   push:
     branches:
-      - main  # Adjust based on your main branch
+      - main
 
 jobs:
   deploy:
@@ -40,11 +40,11 @@ jobs:
               if [ -f "$dir/index.js" ]; then  # Check if index.js exists in the folder
                   FUNCTION_NAME=$(basename "$dir")  # Get the name of the directory as function name
 
-                  # Create a zip file containing all contents of the folder
+                  # Create a zip file containing the index.js file
                   echo "Creating zip file for $FUNCTION_NAME..."
                   cd "$dir" || { echo "Failed to change directory to $dir"; exit 1; }
 
-                  zip -r "../$FUNCTION_NAME.zip" .   # Zip all contents of the folder
+                  zip -r "../$FUNCTION_NAME.zip" .   # Zip all contents of the folder (including index.js)
                   echo "Contents of the zip file:"
                   unzip -l "../$FUNCTION_NAME.zip"    # List the contents of the created zip file
 
@@ -62,53 +62,31 @@ jobs:
                       echo "Waiting for the Lambda update to complete..."
                       sleep 30
 
-                      # Update the Lambda function configuration (memory, timeout, ephemeral storage)
-                      aws lambda update-function-configuration --function-name "$FUNCTION_NAME" \
-                          --memory-size 1024 \
-                          --timeout 840 \
-                          --ephemeral-storage '{"Size": 512}' \
-                          --region "$AWS_REGION"
+                      # Prepare the environment variables JSON if environmentvariables.txt exists
+                      ENV_FILE="$dir/environmentvariables.txt"
+                      if [ -f "$ENV_FILE" ]; then
+                          echo "Reading environment variables from $ENV_FILE..."
+                          ENVIRONMENT_JSON=$(awk -F= '{print "\""$1"\":\""$2"\""}' "$ENV_FILE" | paste -sd, -)
+                          ENVIRONMENT_JSON="{\"Variables\":{$ENVIRONMENT_JSON}}"
 
-                      # If environmentvariables.txt exists, update environment variables
-                      if [ -f "$dir/environmentvariables.txt" ]; then
-                          ENV_VARS=$(awk -F= 'BEGIN {printf "{"} {gsub(/"/, "\\\""); printf "%s\"%s\":\"%s\"", (NR==1?"":","), $1, $2} END {printf "}"}' "$dir/environmentvariables.txt")
+                          # Update the Lambda function configuration with environment variables
                           aws lambda update-function-configuration --function-name "$FUNCTION_NAME" \
-                              --environment "Variables=$ENV_VARS" \
+                              --memory-size 1024 \
+                              --timeout 840 \
+                              --ephemeral-storage '{"Size": 512}' \
+                              --environment "$ENVIRONMENT_JSON" \
+                              --region "$AWS_REGION"
+                      else
+                          # Update the Lambda function configuration without environment variables
+                          aws lambda update-function-configuration --function-name "$FUNCTION_NAME" \
+                              --memory-size 1024 \
+                              --timeout 840 \
+                              --ephemeral-storage '{"Size": 512}' \
                               --region "$AWS_REGION"
                       fi
                   else
-                      echo "Creating new Lambda function $FUNCTION_NAME..."
-
-                      # Create a new Lambda function with specified configuration
-                      if [ -f "$dir/environmentvariables.txt" ]; then
-                          ENV_VARS=$(awk -F= 'BEGIN {printf "{"} {gsub(/"/, "\\\""); printf "%s\"%s\":\"%s\"", (NR==1?"":","), $1, $2} END {printf "}"}' "$dir/environmentvariables.txt")
-                          aws lambda create-function --function-name "$FUNCTION_NAME" \
-                              --runtime nodejs18.x \
-                              --handler index.handler \
-                              --role "$ROLE_ARN" \
-                              --memory-size 1024 \
-                              --timeout 840 \
-                              --ephemeral-storage '{"Size": 512}' \
-                              --zip-file fileb://"$FUNCTION_NAME.zip" \
-                              --environment "Variables=$ENV_VARS" \
-                              --region "$AWS_REGION"
-                      else
-                          aws lambda create-function --function-name "$FUNCTION_NAME" \
-                              --runtime nodejs18.x \
-                              --handler index.handler \
-                              --role "$ROLE_ARN" \
-                              --memory-size 1024 \
-                              --timeout 840 \
-                              --ephemeral-storage '{"Size": 512}' \
-                              --zip-file fileb://"$FUNCTION_NAME.zip" \
-                              --region "$AWS_REGION"
-                      fi
+                      echo "Lambda function $FUNCTION_NAME does not exist. Skipping..."
                   fi
-
-                  # Clean up the zip file after upload
-                  rm "$FUNCTION_NAME.zip"
-              else
-                  echo "No index.js found in $dir, skipping..."
               fi
           done
 
